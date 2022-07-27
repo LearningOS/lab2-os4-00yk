@@ -24,6 +24,8 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
+use self::task::TaskStatistics;
+
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -147,8 +149,27 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    // Synced from LAB1, bend it to our need
+    fn get_task_info(&self) -> TaskStatistics {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].task_statistics
+    }
+
+    fn update_task_info(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].task_statistics.syscall_times[syscall_id] += 1;
+    }
 }
 
+// Synced from LAB1, bend it to our need
+pub fn get_task_info() -> TaskStatistics {
+    TASK_MANAGER.get_task_info()
+}
+
+pub fn update_task_info(syscall_id: usize) {
+    TASK_MANAGER.update_task_info(syscall_id)
+}
 /// Run the first task in task list.
 pub fn run_first_task() {
     TASK_MANAGER.run_first_task();

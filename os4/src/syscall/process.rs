@@ -5,6 +5,7 @@ use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskS
 use crate::timer::get_time_us;
 use crate::mm::translated_physical_address;
 use crate::task::current_user_token;
+use crate::task::get_task_info;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -62,5 +63,15 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    -1
+    let ti = translated_physical_address(current_user_token(),
+                                         ti as *const u8) as *mut TaskInfo;
+    let current_task_info = get_task_info();
+    unsafe {
+        *ti = TaskInfo {
+            status: TaskStatus::Running,
+            syscall_times: current_task_info.syscall_times,
+            time: (get_time_us() - current_task_info.start_time) / 1000,
+        };
+    }
+    0
 }
