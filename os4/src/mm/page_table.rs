@@ -156,7 +156,7 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     v
 }
 
-pub fn translated_physical_address(token: usize, ptr: *const u8) -> usize{
+pub fn translated_physical_address(token: usize, ptr: *const u8) -> usize {
     let page_table = PageTable::from_token(token);
     let va = VirtAddr::from(ptr as usize);
     let ppn = page_table.find_pte(va.floor()).unwrap().ppn();

@@ -25,6 +25,8 @@ pub use task::{TaskControlBlock, TaskStatus};
 pub use context::TaskContext;
 
 use self::task::TaskStatistics;
+use crate::mm;
+use crate::mm::{MapPermission, MemorySet, VPNRange, VirtAddr};
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -160,6 +162,63 @@ impl TaskManager {
         let cur = inner.current_task;
         inner.tasks[cur].task_statistics.syscall_times[syscall_id] += 1;
     }
+
+    fn mmap(&self, start: usize, len: usize, port: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let ref mut memory_set: MemorySet = inner.tasks[current].memory_set;
+        let vpnrange = VPNRange::new(
+            VirtAddr::from(start).floor(),
+            VirtAddr::from(start + len).ceil(),
+        );
+        for vpn in vpnrange {
+            if let Some(pte) = memory_set.translate(vpn) {
+                if pte.is_valid() {
+                    // some vpn in range has already been mapped!
+                    return -1;
+                }
+            }
+        }
+        let mut map_prem = MapPermission::U;
+        if (port & 1) != 0 {
+            map_prem |= MapPermission::R;
+        }
+        if (port & 2) != 0 {
+            map_prem |= MapPermission::W;
+        }
+        if (port & 4) != 0 {
+            map_prem |= MapPermission::X;
+        }
+        println!(
+            "start_va:{:#x}~end_va:{:#x} map_perm:{:#x}",
+            start,
+            start + len,
+            map_prem
+        );
+        memory_set.insert_framed_area(VirtAddr::from(start), VirtAddr::from(start + len), map_prem);
+        0
+    }
+
+    fn munmap(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let ref mut memory_set: MemorySet = inner.tasks[current].memory_set;
+        let vpnrange = VPNRange::new(
+            VirtAddr::from(start).floor(),
+            VirtAddr::from(start + len).ceil(),
+        );
+        for vpn in vpnrange {
+            let pte = memory_set.translate(vpn);
+            // 1st-level or 2nd-level pagetable pte invalid || 3rd-level pagetable pte invalid
+            if pte.is_none() || !pte.unwrap().is_valid() {
+                return -1;
+            }
+        }
+        for vpn in vpnrange {
+            memory_set.munmap(vpn);
+        }
+        0
+    }
 }
 
 // Synced from LAB1, bend it to our need
@@ -170,6 +229,16 @@ pub fn get_task_info() -> TaskStatistics {
 pub fn update_task_info(syscall_id: usize) {
     TASK_MANAGER.update_task_info(syscall_id)
 }
+
+// Added by LAB2
+pub fn mmap(start: usize, len: usize, port: usize) -> isize {
+    TASK_MANAGER.mmap(start, len, port)
+}
+
+pub fn munmap(start: usize, len: usize) -> isize {
+    TASK_MANAGER.munmap(start, len)
+}
+
 /// Run the first task in task list.
 pub fn run_first_task() {
     TASK_MANAGER.run_first_task();
