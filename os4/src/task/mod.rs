@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::PAGE_SIZE;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
@@ -164,6 +165,21 @@ impl TaskManager {
     }
 
     fn mmap(&self, start: usize, len: usize, port: usize) -> isize {
+        // sanity check
+        // 1. [start, end) start be on page boundaries
+        // 2. port must be legal
+        if start % PAGE_SIZE != 0 {
+            return -1;
+        }
+        // only R/W/X can be set, R/W/X/ all zero is also not valid
+        if port & !0x7 != 0 || port & 0x7 == 0  {
+            return -1;
+        }
+        // according to RISC-V manual, if pte.r = 0 and pte.w = 1, stop and raise an access exception
+        if port & 0x2 != 0 && port & 0x1 == 0 {
+            return -1;
+        }
+
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         let ref mut memory_set: MemorySet = inner.tasks[current].memory_set;
@@ -200,6 +216,12 @@ impl TaskManager {
     }
 
     fn munmap(&self, start: usize, len: usize) -> isize {
+        // sanity check
+        // [start, end) start be on page boundaries
+        if start % PAGE_SIZE != 0 {
+            return -1;
+        }
+
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         let ref mut memory_set: MemorySet = inner.tasks[current].memory_set;
